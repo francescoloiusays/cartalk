@@ -1,38 +1,113 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="it">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Walkie Talkie</title>
+    <meta name="description" content="WalkieTalkie — comunicazione audio in tempo reale via web. Premi e parla.">
+    <meta name="theme-color" content="#0a0e17">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>WalkieTalkie</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>Walkie Talkie</h1>
-            <div id="status" class="status-indicator">
-                <span class="dot"></span>
-                <span class="text">Connecting...</span>
-            </div>
-        </header>
-        
-        <main>
-            <div class="ptt-wrapper">
-                <button id="pttButton" class="ptt-btn">
-                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 15C13.6569 15 15 13.6569 15 12V6C15 4.34315 13.6569 3 12 3C10.3431 3 9 4.34315 9 6V12C9 13.6569 10.3431 15 12 15Z" fill="currentColor"/>
-                        <path d="M19 10V12C19 15.866 15.866 19 12 19M5 10V12C5 15.866 8.13401 19 12 19M12 19V22M8 22H16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- ===== SCREEN 1: JOIN ===== -->
+    <div id="joinScreen" class="screen active">
+        <div class="join-container">
+            <div class="logo-area">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="18" y="4" width="28" height="48" rx="6" stroke="url(#g1)" stroke-width="3"/>
+                        <rect x="24" y="12" width="16" height="10" rx="3" fill="url(#g1)" opacity=".6"/>
+                        <circle cx="32" cy="36" r="6" fill="url(#g1)"/>
+                        <line x1="32" y1="52" x2="32" y2="60" stroke="url(#g1)" stroke-width="3" stroke-linecap="round"/>
+                        <line x1="26" y1="60" x2="38" y2="60" stroke="url(#g1)" stroke-width="3" stroke-linecap="round"/>
+                        <defs>
+                            <linearGradient id="g1" x1="0" y1="0" x2="64" y2="64">
+                                <stop stop-color="#6ee7b7"/>
+                                <stop offset="1" stop-color="#3b82f6"/>
+                            </linearGradient>
+                        </defs>
                     </svg>
-                    <span>PTT</span>
+                </div>
+                <h1>WalkieTalkie</h1>
+                <p class="subtitle">Comunicazione audio istantanea</p>
+            </div>
+
+            <div class="join-form">
+                <label for="nicknameInput">Il tuo nome</label>
+                <input type="text" id="nicknameInput" placeholder="es. Marco" maxlength="20" autocomplete="off">
+
+                <label for="roomInput">Codice canale</label>
+                <input type="text" id="roomInput" placeholder="es. alpha-1" maxlength="20" autocomplete="off">
+
+                <button id="joinBtn" class="btn-primary">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                    Entra nel canale
                 </button>
-                <div class="ripple"></div>
             </div>
-            <div id="logs" class="logs">
-                <p>Press and hold to speak.</p>
-            </div>
-        </main>
+
+            <p class="join-hint">Condividi lo stesso codice canale con chi vuoi parlare</p>
+        </div>
     </div>
+
+    <!-- ===== SCREEN 2: RADIO ===== -->
+    <div id="radioScreen" class="screen">
+        <div class="radio-container">
+
+            <!-- Top bar -->
+            <header class="radio-header">
+                <div class="channel-info">
+                    <span class="channel-label">CANALE</span>
+                    <span id="channelName" class="channel-name">—</span>
+                </div>
+                <div class="header-right">
+                    <div id="connectionStatus" class="conn-badge">
+                        <span class="conn-dot"></span>
+                        <span class="conn-text">Connesso</span>
+                    </div>
+                    <button id="leaveBtn" class="btn-icon" title="Esci dal canale">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Users -->
+            <div class="users-bar">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <span id="userCount">1</span> online
+            </div>
+
+            <!-- Visual feedback area -->
+            <div class="visual-area">
+                <div class="wave-container" id="waveContainer">
+                    <div class="wave-ring ring-1"></div>
+                    <div class="wave-ring ring-2"></div>
+                    <div class="wave-ring ring-3"></div>
+                    <div class="mic-icon-center">
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 15C13.6569 15 15 13.6569 15 12V6C15 4.34315 13.6569 3 12 3C10.3431 3 9 4.34315 9 6V12C9 13.6569 10.3431 15 12 15Z" fill="currentColor"/>
+                            <path d="M19 10V12C19 15.866 15.866 19 12 19M5 10V12C5 15.866 8.13401 19 12 19M12 19V22M8 22H16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                </div>
+                <p id="radioStatus" class="radio-status">Tieni premuto per parlare</p>
+            </div>
+
+            <!-- PTT Button -->
+            <div class="ptt-area">
+                <button id="pttButton" class="ptt-btn">
+                    <span class="ptt-label">PREMI E PARLA</span>
+                </button>
+            </div>
+
+        </div>
+    </div>
+
     <script src="/socket.io/socket.io.js"></script>
     <script src="app.js"></script>
 </body>
