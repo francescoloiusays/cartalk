@@ -1,283 +1,140 @@
-// ============================================
-// WalkieTalkie — Client App
-// ============================================
-
 const socket = io();
 
-// ===== DOM Elements =====
-const joinScreen   = document.getElementById('joinScreen');
-const radioScreen  = document.getElementById('radioScreen');
-const nicknameInput = document.getElementById('nicknameInput');
-const roomInput    = document.getElementById('roomInput');
-const joinBtn      = document.getElementById('joinBtn');
-const leaveBtn     = document.getElementById('leaveBtn');
-const channelName  = document.getElementById('channelName');
-const userCount    = document.getElementById('userCount');
-const connStatus   = document.getElementById('connectionStatus');
-const connText     = connStatus.querySelector('.conn-text');
-const pttButton    = document.getElementById('pttButton');
-const waveContainer = document.getElementById('waveContainer');
-const radioStatus  = document.getElementById('radioStatus');
+const pttButton = document.getElementById('pttButton');
+const pttContainer = document.querySelector('.ptt-container');
+const statusBadge = document.getElementById('status');
+const feedbackText = document.getElementById('feedback');
 
-// ===== State =====
-let currentRoom = null;
-let nickname = '';
-let mediaRecorder = null;
+let mediaRecorder;
 let audioChunks = [];
 let isRecording = false;
-let receiveTimeout = null;
 
-// ===== Socket Connection =====
+// Socket connection feedback
 socket.on('connect', () => {
-    connStatus.classList.remove('offline');
-    connText.textContent = 'Connesso';
+    statusBadge.textContent = 'Ready';
+    statusBadge.classList.remove('offline');
+    statusBadge.classList.add('online');
 });
 
 socket.on('disconnect', () => {
-    connStatus.classList.add('offline');
-    connText.textContent = 'Offline';
+    statusBadge.textContent = 'Disconnected';
+    statusBadge.classList.remove('online');
+    statusBadge.classList.add('offline');
 });
 
-// ===== Join Room =====
-joinBtn.addEventListener('click', () => {
-    const nick = nicknameInput.value.trim();
-    const room = roomInput.value.trim();
-
-    if (!nick || !room) {
-        // Shake animation on empty fields
-        if (!nick) shakeEl(nicknameInput);
-        if (!room) shakeEl(roomInput);
-        return;
-    }
-
-    nickname = nick;
-    currentRoom = room;
-
-    socket.emit('joinRoom', currentRoom);
-});
-
-// Allow Enter to join
-[nicknameInput, roomInput].forEach(input => {
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') joinBtn.click();
-    });
-});
-
-socket.on('roomJoined', ({ roomCode, userCount: count }) => {
-    channelName.textContent = roomCode;
-    userCount.textContent = count;
-    switchScreen('radio');
-});
-
-socket.on('userJoined', ({ userCount: count }) => {
-    userCount.textContent = count;
-});
-
-socket.on('userLeft', ({ userCount: count }) => {
-    userCount.textContent = count;
-});
-
-// ===== Leave Room =====
-leaveBtn.addEventListener('click', () => {
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-        mediaRecorder.stop();
-    }
-    currentRoom = null;
-    switchScreen('join');
-    // The socket stays connected, user just leaves the room
-    location.reload(); // simplest way to reset state
-});
-
-// ===== Screen Switching =====
-function switchScreen(targetId) {
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    if (targetId === 'radio') {
-        radioScreen.classList.add('active');
-    } else {
-        joinScreen.classList.add('active');
-    }
-}
-
-// ===== Audio Init =====
+// Setup microphone natively dynamically to deal with permission rules in browsers
 async function initAudio() {
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true
-            }
-        });
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream); // Usually defaults to webm or ogg depending on browser
 
-        // Check for supported mimeType
-        let mimeType = 'audio/webm;codecs=opus';
-        if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = 'audio/webm';
-        }
-        if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = 'audio/mp4';
-        }
-        if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = ''; // let the browser choose
-        }
-
-        const options = mimeType ? { mimeType } : {};
-        mediaRecorder = new MediaRecorder(stream, options);
-
-        mediaRecorder.ondataavailable = (e) => {
-            if (e.data.size > 0) {
-                audioChunks.push(e.data);
+        mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                audioChunks.push(event.data);
             }
         };
 
         mediaRecorder.onstop = () => {
-            if (audioChunks.length === 0) return;
-
-            const mType = mediaRecorder.mimeType || 'audio/webm';
-            const audioBlob = new Blob(audioChunks, { type: mType });
+            const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
             audioChunks = [];
-
-            if (currentRoom) {
-                // Convert blob to ArrayBuffer for Socket.IO
-                audioBlob.arrayBuffer().then(buffer => {
-                    socket.emit('audioData', {
-                        roomCode: currentRoom,
-                        audio: buffer
-                    });
-                });
-            }
-
-            // Reset UI
-            isRecording = false;
-            waveContainer.classList.remove('transmitting');
-            radioStatus.textContent = 'Tieni premuto per parlare';
-            radioStatus.className = 'radio-status';
-            pttButton.classList.remove('active');
-            socket.emit('pttState', { roomCode: currentRoom, active: false });
+            
+            // Send audio blob over socket
+            socket.emit('audioMessage', audioBlob);
         };
-
+        
         return true;
     } catch (err) {
-        console.error('Microphone access error:', err);
-        radioStatus.textContent = '⚠ Microfono non disponibile';
-        radioStatus.style.color = '#ef4444';
+        console.error("Microphone Error:", err);
+        alert("E' necessario accettare i permessi del microfono per usare il Walkie-Talkie.");
         return false;
     }
 }
 
-// ===== PTT Logic =====
-async function startPTT(e) {
-    if (e && e.cancelable) e.preventDefault();
-    if (isRecording) return;
-
+// Logic for starting recording
+function startRecording(e) {
+    if (e && e.cancelable) e.preventDefault(); // Stop default behaviours (scrolling etc)
+    
+    // First interaction will initialize audio if not done yet
     if (!mediaRecorder) {
-        const ok = await initAudio();
-        if (!ok) return;
+        initAudio().then(success => {
+            if (success) executeStartRecording();
+        });
+    } else {
+        executeStartRecording();
     }
+}
 
-    if (mediaRecorder.state === 'inactive') {
+function executeStartRecording() {
+    if (mediaRecorder && mediaRecorder.state === "inactive") {
         isRecording = true;
         audioChunks = [];
-        // Record in small chunks for potential streaming later
-        mediaRecorder.start(200);
-
+        mediaRecorder.start();
+        
         pttButton.classList.add('active');
-        waveContainer.classList.remove('receiving');
-        waveContainer.classList.add('transmitting');
-        radioStatus.textContent = '🔴 Trasmissione in corso...';
-        radioStatus.className = 'radio-status tx';
-
-        socket.emit('pttState', { roomCode: currentRoom, active: true });
+        pttContainer.classList.add('recording');
+        feedbackText.classList.add('show');
     }
 }
 
-function stopPTT(e) {
+// Logic for stopping recording
+function stopRecording(e) {
     if (e && e.cancelable) e.preventDefault();
-    if (!isRecording) return;
-
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
+    
+    if (isRecording && mediaRecorder && mediaRecorder.state !== "inactive") {
         mediaRecorder.stop();
+        isRecording = false;
+        
+        pttButton.classList.remove('active');
+        pttContainer.classList.remove('recording');
+        feedbackText.classList.remove('show');
     }
 }
 
-// Event listeners — mouse + touch
-pttButton.addEventListener('mousedown', startPTT);
-pttButton.addEventListener('mouseup', stopPTT);
-pttButton.addEventListener('mouseleave', stopPTT);
+// Attach Touch Events (Mobile)
+pttButton.addEventListener('touchstart', startRecording, { passive: false });
+pttButton.addEventListener('touchend', stopRecording, { passive: false });
+pttButton.addEventListener('touchcancel', stopRecording, { passive: false });
 
-pttButton.addEventListener('touchstart', startPTT, { passive: false });
-pttButton.addEventListener('touchend', stopPTT, { passive: false });
-pttButton.addEventListener('touchcancel', stopPTT, { passive: false });
+// Attach Mouse Events (Desktop testing)
+pttButton.addEventListener('mousedown', startRecording);
+pttButton.addEventListener('mouseup', stopRecording);
+pttButton.addEventListener('mouseleave', stopRecording); // If user drags out of button
 
-// Prevent context menu on long press (mobile)
-pttButton.addEventListener('contextmenu', (e) => e.preventDefault());
+/* Audio Player logic */
+const audioQueue = [];
+let isPlaying = false;
 
-// ===== Receive Audio =====
-socket.on('audioData', ({ userId, audio }) => {
-    clearTimeout(receiveTimeout);
-
-    waveContainer.classList.remove('transmitting');
-    waveContainer.classList.add('receiving');
-    radioStatus.textContent = '🔵 Ricezione audio...';
-    radioStatus.className = 'radio-status rx';
-
-    const mimeType = 'audio/webm;codecs=opus';
-    const blob = new Blob([audio], {
-        type: MediaRecorder.isTypeSupported(mimeType) ? mimeType : 'audio/webm'
-    });
-    const url = URL.createObjectURL(blob);
-    const player = new Audio(url);
-
-    player.onended = () => {
-        URL.revokeObjectURL(url);
+// When an audio message is received over WebSockets
+socket.on('audioMessage', async (blobData) => {
+    // Convert ArrayBuffer back to Blob
+    const blob = new Blob([blobData]); 
+    const audioUrl = URL.createObjectURL(blob);
+    const audio = new Audio(audioUrl);
+    
+    // Clean up when finished playing chunks
+    audio.onended = () => {
+        pttButton.classList.remove('receiving');
+        isPlaying = false;
+        URL.revokeObjectURL(audioUrl); // free memory
+        playNextInQueue();
     };
 
-    player.play().catch(err => {
-        console.warn('Playback issue:', err);
+    audioQueue.push(audio);
+    playNextInQueue();
+});
+
+function playNextInQueue() {
+    if (isPlaying || audioQueue.length === 0) return;
+    
+    isPlaying = true;
+    const nextAudio = audioQueue.shift();
+    
+    pttButton.classList.add('receiving'); // Visual effect
+    
+    nextAudio.play().catch(e => {
+        console.error("Playback error. Browsers auto-play policy might block this:", e);
+        isPlaying = false;
+        pttButton.classList.remove('receiving');
+        playNextInQueue();
     });
-
-    // Reset UI after a short delay
-    receiveTimeout = setTimeout(() => {
-        if (!isRecording) {
-            waveContainer.classList.remove('receiving');
-            radioStatus.textContent = 'Tieni premuto per parlare';
-            radioStatus.className = 'radio-status';
-        }
-    }, 1500);
-});
-
-// PTT state from others (visual feedback)
-socket.on('pttState', ({ userId, active }) => {
-    if (active && !isRecording) {
-        waveContainer.classList.add('receiving');
-        radioStatus.textContent = '🔵 Qualcuno sta parlando...';
-        radioStatus.className = 'radio-status rx';
-    } else if (!active && !isRecording) {
-        clearTimeout(receiveTimeout);
-        receiveTimeout = setTimeout(() => {
-            if (!isRecording) {
-                waveContainer.classList.remove('receiving');
-                radioStatus.textContent = 'Tieni premuto per parlare';
-                radioStatus.className = 'radio-status';
-            }
-        }, 500);
-    }
-});
-
-// ===== Helpers =====
-function shakeEl(el) {
-    el.style.animation = 'none';
-    el.offsetHeight; // trigger reflow
-    el.style.animation = 'shake 0.4s ease';
-    setTimeout(() => { el.style.animation = ''; }, 400);
 }
-
-// Add shake keyframes dynamically
-const style = document.createElement('style');
-style.textContent = `
-@keyframes shake {
-    0%, 100% { transform: translateX(0); }
-    20%, 60% { transform: translateX(-6px); }
-    40%, 80% { transform: translateX(6px); }
-}`;
-document.head.appendChild(style);
